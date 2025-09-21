@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.env
+.venv
+
+# Audio files (optional - you might want to keep some for testing)
+# *.mp3
+# *.wav
+
+# Build outputs
+build/
+dist/
+*.log
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+nohup.out
+
+# Frontend specific
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
