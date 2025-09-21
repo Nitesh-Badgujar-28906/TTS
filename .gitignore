@@ -34,12 +34,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+package-lock.json
 
 # React Build
 build/
 .eslintcache
 
-# Audio Files
+# Audio Files (demo files for testing only)
 tts-webapp/backend/voices/*.mp3
 *.mp3
 *.wav
@@ -75,3 +76,6 @@ logs/
 /tmp/
 *.tmp
 *.temp
+
+# Playwright
+/tmp/playwright-logs/*
