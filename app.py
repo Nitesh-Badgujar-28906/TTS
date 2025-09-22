@@ -1,37 +1,67 @@
 import streamlit as st
 import os
 import tempfile
+import time
+import random
 from gtts import gTTS
+from gtts.tts import gTTSError
 import base64
 from io import BytesIO
 
-def text_to_speech(text, voice_type, filename):
+@st.cache_data(show_spinner=False, ttl=3600)
+def _synthesize_bytes(text: str, tld: str = "com", slow: bool = False) -> bytes:
+    """Call gTTS and return MP3 bytes; cached to avoid repeated API hits for same input."""
+    tts = gTTS(text=text, lang='hi', tld=tld, slow=slow)
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_file:
+        tts.save(tmp_file.name)
+        with open(tmp_file.name, 'rb') as audio_file:
+            audio_bytes = audio_file.read()
+    os.unlink(tmp_file.name)
+    return audio_bytes
+
+
+def text_to_speech(text, voice_type, filename, *, retries: int = 5, base_delay: float = 0.8):
     """
-    Convert Hindi text to speech using gTTS and save as mp3 file
+    Convert Hindi text to speech using gTTS and save as mp3 file.
+    Adds retries with exponential backoff and rotates Google TLDs to mitigate 429s.
     """
-    try:
-        # Create gTTS object for Hindi language
-        tts = gTTS(text=text, lang='hi', slow=False)
-        
-        # Create filename with voice type
-        audio_filename = f"{filename}_{voice_type.lower()}.mp3"
-        
-        # Save to temporary file first
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_file:
-            tts.save(tmp_file.name)
-            
-            # Read the audio file
-            with open(tmp_file.name, 'rb') as audio_file:
-                audio_bytes = audio_file.read()
-            
-            # Clean up temporary file
-            os.unlink(tmp_file.name)
-            
+    # Create filename with voice type
+    audio_filename = f"{filename}_{voice_type.lower()}.mp3"
+
+    # Rotate among multiple TLDs to distribute requests
+    tld_pool = ["com", "co.in", "com.au", "co.uk"]
+
+    # Randomize start to avoid thundering herd on a single TLD
+    start_idx = random.randrange(len(tld_pool))
+
+    last_error = None
+    for attempt in range(retries):
+        tld = tld_pool[(start_idx + attempt) % len(tld_pool)]
+        try:
+            audio_bytes = _synthesize_bytes(text=text, tld=tld, slow=False)
+            # Success
             return audio_bytes, audio_filename
-            
-    except Exception as e:
-        st.error(f"Error generating speech: {str(e)}")
-        return None, None
+        except Exception as e:  # Catch gTTSError and any transient network errors
+            last_error = e
+            message = str(e)
+            is_rate_limited = isinstance(e, gTTSError) and ("429" in message or "Too Many Requests" in message)
+            # Some environments surface HTTP errors as generic Exceptions; check message too
+            is_rate_limited = is_rate_limited or ("429" in message or "Too Many Requests" in message)
+
+            if attempt < retries - 1:
+                # Exponential backoff with jitter
+                delay = base_delay * (1.6 ** attempt) + random.uniform(0, 0.4)
+                # Inform user non-intrusively
+                st.info(f"Retrying TTS (attempt {attempt + 2}/{retries})… switching region tld={tld!s} in ~{delay:.1f}s")
+                time.sleep(delay)
+                continue
+            else:
+                # Final failure: provide actionable guidance
+                if is_rate_limited:
+                    st.error("Error generating speech: 429 (Too Many Requests) from TTS API. Please wait 1–2 minutes and try again, or reduce request frequency. If this persists, try a different network or deploy the app on a server.")
+                else:
+                    st.error(f"Error generating speech: {message}")
+                return None, None
 
 def get_audio_download_link(audio_bytes, filename):
     """
